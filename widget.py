@@ -447,7 +447,7 @@ class FloatingWidget(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setMinimumSize(MIN_WIDGET_WIDTH, MIN_WIDGET_HEIGHT)
         self.setMaximumSize(MAX_WIDGET_WIDTH, MAX_WIDGET_HEIGHT)
-        self.resize(320, 360)
+        self.resize(320, 280)
         self.setMouseTracking(True)
         self._drag_offset = None
         self._resize_edges = Qt.Edge(0)
