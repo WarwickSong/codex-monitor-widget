@@ -197,8 +197,8 @@ class QuotaWidget(QWidget):
 
         cards = QHBoxLayout()
         cards.setSpacing(8)
-        self.wd_card = self._make_card("工作日节奏 · 周一~五")
-        self.ed_card = self._make_card("每天都在用 · 含周末")
+        self.wd_card = self._make_card("工作日节奏")
+        self.ed_card = self._make_card("每天都在用")
         cards.addWidget(self.wd_card)
         cards.addWidget(self.ed_card)
         pl.addLayout(cards)
@@ -219,6 +219,7 @@ class QuotaWidget(QWidget):
         v.addWidget(QLabel(title, objectName="card_title"))
         card.main_label = QLabel("--", objectName="card_main")
         card.sub_label = QLabel("", objectName="card_sub")
+        card.sub_label.setWordWrap(True)
         v.addWidget(card.main_label)
         v.addWidget(card.sub_label)
         return card
@@ -390,17 +391,17 @@ class QuotaWidget(QWidget):
             self.setGeometry(self.x(), self.y(), self._bar_width(), COLLAPSED_H)
 
     def _fill_card(self, card, sc, remaining_h: float, unit: str, tag: str) -> None:
+        sub = ""
         if sc.end_remaining_pct >= 0:
             card.main_label.setText(f"结余 {sc.end_remaining_pct:.0f}%")
             card.main_label.setStyleSheet(f"color: {COLOR_GREEN};")
         else:
             ahead = max(0.0, remaining_h - sc.hours_left)
-            text = f"超 {-sc.end_remaining_pct:.0f}%"
-            if ahead > 0:
-                text += f" ·提前{ahead:.0f}h用完"
-            card.main_label.setText(text)
+            card.main_label.setText(f"超 {-sc.end_remaining_pct:.0f}%")
             card.main_label.setStyleSheet(f"color: {COLOR_RED};")
-        sub = f"还能撑 {sc.days_left:.1f} {unit}"
+            if ahead > 0:
+                sub += f"提前{ahead:.0f}h用完 · "
+        sub += f"撑 {sc.days_left:.1f} {unit}"
         if tag:
             sub += f" · {tag}"
         card.sub_label.setText(sub)

@@ -17,7 +17,7 @@ POLL_INTERVAL_SEC = 5 * 60  # 额度轮询间隔
 
 # —— UI ——
 COLLAPSED_H = 32              # 折叠胶囊高度 px
-PANEL_W, PANEL_H = 312, 224   # 展开面板尺寸 px
+PANEL_W, PANEL_H = 260, 232   # 展开面板尺寸 px
 EXPAND_MS = 150               # 展开/收起动画时长
 
 COLOR_GREEN = "#34d399"
