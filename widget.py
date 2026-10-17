@@ -1,13 +1,14 @@
-"""PySide6 悬浮条：折叠为一条小字，悬停展开双口径预估面板。"""
+"""PySide6 悬浮条：折叠为胶囊小条（发光点+数字+迷你进度），悬停展开玻璃面板。"""
 from __future__ import annotations
 
 from datetime import datetime
 from typing import Optional
 
 from PySide6.QtCore import QEasingCurve, Qt, QTimer, QUrl, QVariantAnimation, Signal
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtGui import QBrush, QColor, QDesktopServices, QPainter, QRadialGradient
 from PySide6.QtWidgets import (
-    QApplication, QFrame, QHBoxLayout, QLabel, QMenu, QProgressBar, QVBoxLayout, QWidget,
+    QApplication, QFrame, QGraphicsDropShadowEffect, QHBoxLayout, QLabel,
+    QMenu, QProgressBar, QVBoxLayout, QWidget,
 )
 
 from config import (
@@ -18,23 +19,35 @@ from forecast import Forecast, forecast
 from history import append_sample, load_samples, load_settings, save_settings
 from usage import UsageSnapshot
 
-SHELL_QSS = """
-#shell { background: rgba(20,20,26,0.92); border-radius: 10px;
-         border: 1px solid rgba(255,255,255,0.10); }
-#bar { color: #e8e8ec; font-size: 12px; }
-#pct { font-size: 24px; font-weight: 700; }
-#countdown { color: #9a9aa4; font-size: 11px; }
-#muted { color: #9a9aa4; font-size: 11px; }
-#card { background: rgba(255,255,255,0.07); border-radius: 8px; }
-#card_title { color: #8f8f9a; font-size: 10px; }
-#card_main { color: #e8e8ec; font-size: 13px; font-weight: 600; }
-#card_sub { color: #9a9aa4; font-size: 11px; }
-#bar_progress { background: rgba(255,255,255,0.12); border: none;
-                border-radius: 2px; max-height: 4px; min-height: 4px; }
-QMenu { background: #1c1c22; color: #e8e8ec; border: 1px solid #33333c;
-        border-radius: 8px; padding: 4px; }
-QMenu::item { padding: 6px 18px; border-radius: 6px; }
-QMenu::item:selected { background: #2e2e38; }
+TEXT_MAIN = "#f2f2f5"
+TEXT_MUTED = "#9a9aa2"
+TEXT_FAINT = "#70707a"
+HAIRLINE = "rgba(255,255,255,0.08)"
+CARD_BG = "rgba(255,255,255,0.055)"
+
+SHELL_QSS = f"""
+#shell {{ background: rgba(16,16,22,0.90); border-radius: 16px;
+          border: 1px solid rgba(255,255,255,0.13); }}
+#bar_pct {{ color: {TEXT_MAIN}; font-size: 12px; font-weight: 600; }}
+#bar_days {{ color: {TEXT_MUTED}; font-size: 11px; }}
+#caption {{ color: {TEXT_FAINT}; font-size: 10px; }}
+#pct {{ font-size: 26px; font-weight: 700; }}
+#countdown {{ color: {TEXT_MUTED}; font-size: 11px; }}
+#muted {{ color: {TEXT_MUTED}; font-size: 11px; }}
+#card {{ background: {CARD_BG}; border-radius: 10px;
+         border: 1px solid {HAIRLINE}; }}
+#card_title {{ color: {TEXT_FAINT}; font-size: 10px; }}
+#card_main {{ color: {TEXT_MAIN}; font-size: 14px; font-weight: 650; }}
+#card_sub {{ color: {TEXT_MUTED}; font-size: 11px; }}
+#bar_progress, #mini_progress {{
+    background: rgba(255,255,255,0.10); border: none; border-radius: 2px; }}
+#bar_progress {{ max-height: 5px; min-height: 5px; }}
+#mini_progress {{ max-height: 4px; min-height: 4px; max-width: 36px; }}
+QMenu {{ background: rgba(22,22,28,0.97); color: {TEXT_MAIN};
+         border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; padding: 6px; }}
+QMenu::item {{ padding: 7px 22px; border-radius: 8px; font-size: 12px; }}
+QMenu::item:selected {{ background: rgba(255,255,255,0.09); }}
+QMenu::separator {{ height: 1px; background: {HAIRLINE}; margin: 5px 8px; }}
 """
 
 
@@ -46,13 +59,54 @@ def _status_color(remain_pct: float) -> str:
     return COLOR_RED
 
 
+def _lighter(hex_color: str, factor: float = 1.45) -> QColor:
+    c = QColor(hex_color)
+    r = min(255, int(c.red() + (255 - c.red()) * (factor - 1)))
+    g = min(255, int(c.green() + (255 - c.green()) * (factor - 1)))
+    b = min(255, int(c.blue() + (255 - c.blue()) * (factor - 1)))
+    return QColor(r, g, b)
+
+
+def _progress_qss(color: str, obj: str) -> str:
+    hi = _lighter(color).name()
+    return (f"{obj}::chunk {{ border-radius: 2px;"
+            f" background: qlineargradient(x1:0,y1:0,x2:1,y2:0,"
+            f" stop:0 {color}, stop:1 {hi}); }}")
+
+
+class StatusDot(QWidget):
+    """发光状态点：实心圆 + 柔和光晕。"""
+
+    def __init__(self, color: str = TEXT_MUTED) -> None:
+        super().__init__()
+        self.setFixedSize(18, 18)
+        self._color = QColor(color)
+
+    def set_color(self, color: str) -> None:
+        self._color = QColor(color)
+        self.update()
+
+    def paintEvent(self, event) -> None:
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setPen(Qt.NoPen)
+        halo = QRadialGradient(9.0, 9.0, 9.0)
+        halo.setColorAt(0.0, QColor(self._color.red(), self._color.green(),
+                                    self._color.blue(), 120))
+        halo.setColorAt(1.0, QColor(0, 0, 0, 0))
+        p.setBrush(QBrush(halo))
+        p.drawEllipse(0, 0, 18, 18)
+        p.setBrush(self._color)
+        p.drawEllipse(6, 6, 6, 6)
+
+
 def _fmt_countdown(resets_ts) -> str:
     if not resets_ts:
         return "重置时间未知"
     secs = max(0, int((datetime.fromtimestamp(resets_ts) - datetime.now()).total_seconds()))
     d, r = divmod(secs, 86400)
     h, r = divmod(r, 3600)
-    return f"距重置 {d}天{h}时" if d else f"距重置 {h}时{r // 60}分"
+    return f"{d}天{h}时" if d else f"{h}时{r // 60}分"
 
 
 class QuotaWidget(QWidget):
@@ -85,29 +139,56 @@ class QuotaWidget(QWidget):
     def _build_ui(self) -> None:
         shell = QFrame(self, objectName="shell")
         shell.setStyleSheet(SHELL_QSS)
+        shadow = QGraphicsDropShadowEffect(shell)
+        shadow.setBlurRadius(28)
+        shadow.setOffset(0, 7)
+        shadow.setColor(QColor(0, 0, 0, 150))
+        shell.setGraphicsEffect(shadow)
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.addWidget(shell)
         lay = QVBoxLayout(shell)
-        lay.setContentsMargins(12, 4, 12, 8)
-        lay.setSpacing(6)
+        lay.setContentsMargins(12, 3, 12, 7)
+        lay.setSpacing(8)
 
-        self.bar = QLabel("加载中…", objectName="bar")
-        lay.addWidget(self.bar)
+        # —— 折叠态：发光点 + 数字 + 迷你进度 + 天数 ——
+        self.bar_row = QWidget()
+        row = QHBoxLayout(self.bar_row)
+        row.setContentsMargins(2, 0, 4, 0)
+        row.setSpacing(7)
+        self.dot = StatusDot()
+        self.bar_pct = QLabel("--", objectName="bar_pct")
+        self.mini = QProgressBar(objectName="mini_progress")
+        self.mini.setTextVisible(False)
+        self.mini.setRange(0, 100)
+        self.mini.setFixedWidth(36)
+        self.bar_days = QLabel("", objectName="bar_days")
+        row.addWidget(self.dot, 0, Qt.AlignVCenter)
+        row.addWidget(self.bar_pct, 0, Qt.AlignVCenter)
+        row.addWidget(self.mini, 0, Qt.AlignVCenter)
+        row.addWidget(self.bar_days, 0, Qt.AlignVCenter)
+        lay.addWidget(self.bar_row)
 
+        # —— 展开面板 ——
         self.panel = QFrame(objectName="panel")
         lay.addWidget(self.panel)
         pl = QVBoxLayout(self.panel)
-        pl.setContentsMargins(2, 2, 2, 2)
-        pl.setSpacing(6)
+        pl.setContentsMargins(4, 6, 4, 4)
+        pl.setSpacing(8)
 
-        head = QHBoxLayout()
+        header = QVBoxLayout()
+        header.setSpacing(2)
+        self.caption = QLabel("周限额剩余", objectName="caption")
+        head_row = QHBoxLayout()
+        head_row.setSpacing(8)
         self.pct = QLabel("--", objectName="pct")
-        self.countdown = QLabel("", objectName="countdown")
-        head.addWidget(self.pct)
-        head.addStretch(1)
-        head.addWidget(self.countdown, 0, Qt.AlignTop)
-        pl.addLayout(head)
+        self.countdown_wrap = QLabel("", objectName="countdown")
+        head_row.addWidget(self.pct)
+        head_row.addStretch(1)
+        head_row.addWidget(self.countdown_wrap, 0, Qt.AlignBottom)
+        header.addWidget(self.caption)
+        header.addLayout(head_row)
+        pl.addLayout(header)
 
         self.progress = QProgressBar(objectName="bar_progress")
         self.progress.setTextVisible(False)
@@ -115,7 +196,7 @@ class QuotaWidget(QWidget):
         pl.addWidget(self.progress)
 
         cards = QHBoxLayout()
-        cards.setSpacing(6)
+        cards.setSpacing(8)
         self.wd_card = self._make_card("工作日节奏 · 周一~五")
         self.ed_card = self._make_card("每天都在用 · 含周末")
         cards.addWidget(self.wd_card)
@@ -133,8 +214,8 @@ class QuotaWidget(QWidget):
     def _make_card(self, title: str) -> QFrame:
         card = QFrame(objectName="card")
         v = QVBoxLayout(card)
-        v.setContentsMargins(8, 6, 8, 6)
-        v.setSpacing(2)
+        v.setContentsMargins(10, 8, 10, 8)
+        v.setSpacing(3)
         v.addWidget(QLabel(title, objectName="card_title"))
         card.main_label = QLabel("--", objectName="card_main")
         card.sub_label = QLabel("", objectName="card_sub")
@@ -143,7 +224,7 @@ class QuotaWidget(QWidget):
         return card
 
     def _bar_width(self) -> int:
-        return max(96, self.bar.sizeHint().width() + 28)
+        return max(112, self.bar_row.sizeHint().width() + 26)
 
     # ---- 位置与生命周期 ----
     def _restore_pos(self) -> None:
@@ -152,7 +233,7 @@ class QuotaWidget(QWidget):
             self.move(int(pos[0]), int(pos[1]))
         else:
             g = QApplication.primaryScreen().availableGeometry()
-            self.move(g.right() - 150, g.bottom() - 80)
+            self.move(g.right() - 160, g.bottom() - 80)
 
     def closeEvent(self, event) -> None:
         save_settings({"pos": [self.x(), self.y()]})
@@ -249,41 +330,42 @@ class QuotaWidget(QWidget):
             )
         self._apply_state()
 
-    def _set_bar(self, text: str, color: str) -> None:
-        self.bar.setText(text)
-        self.bar.setStyleSheet(f"color: {color};")
+    def _set_collapsed(self, color: str, main: str, days: str, progress: int) -> None:
+        self.dot.set_color(color)
+        self.bar_pct.setText(main)
+        self.bar_days.setText(days)
+        self.mini.setValue(progress)
+        self.mini.setStyleSheet(_progress_qss(color, "#mini_progress"))
 
     def _apply_state(self) -> None:
         snap = self._snapshot
         if snap is None:
-            self._set_bar("加载中…", "#8a8a94")
+            self._set_collapsed(TEXT_MUTED, "加载中…", "", 0)
             return
         if snap.weekly is None:
             err = snap.error or ""
             if ("未找到" in err) or ("令牌" in err) or ("登录" in err):
-                self._set_bar("● 未登录", COLOR_RED)
+                self._set_collapsed(COLOR_RED, "未登录", "", 0)
                 self.footer.setText(f"未登录：{err}")
             else:
-                self._set_bar("● 离线", "#8a8a94")
+                self._set_collapsed(TEXT_MUTED, "离线", "", 0)
                 self.footer.setText(f"拉取失败：{err}" if err else "拉取失败")
             return
 
         w = snap.weekly
         remain = 100.0 - w.used_pct
-        color = "#8a8a94" if snap.error else _status_color(remain)
-        err = " ·未更新" if snap.error else ""
+        color = TEXT_MUTED if snap.error else _status_color(remain)
+        days_txt = ""
         if w.resets_at:
-            days = max((datetime.fromtimestamp(w.resets_at) - datetime.now()).total_seconds() / 86400, 0.0)
-            self._set_bar(f"● {remain:.0f}%  {days:.1f}d{err}", color)
-        else:
-            self._set_bar(f"● {remain:.0f}%{err}", color)
+            d = max((datetime.fromtimestamp(w.resets_at) - datetime.now()).total_seconds() / 86400, 0.0)
+            days_txt = f"{d:.1f}d" + ("!" if snap.error else "")
+        self._set_collapsed(color, f"{remain:.0f}%", days_txt, int(remain))
 
         self.pct.setText(f"{remain:.0f}%")
         self.pct.setStyleSheet(f"color: {color};")
         self.progress.setValue(int(remain))
-        self.progress.setStyleSheet(
-            f"#bar_progress::chunk {{ background: {color}; border-radius: 2px; }}")
-        self.countdown.setText(_fmt_countdown(w.resets_at))
+        self.progress.setStyleSheet(_progress_qss(color, "#bar_progress"))
+        self.countdown_wrap.setText(f"重置 {_fmt_countdown(w.resets_at)}")
 
         self._forecast = None
         if w.resets_at:

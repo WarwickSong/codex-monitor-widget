@@ -29,7 +29,11 @@ def _fetch_once(widget: QuotaWidget) -> None:
 def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("Codex Quota Widget")
-    app.setFont(QFont("Microsoft YaHei UI", 9))
+    font = QFont()
+    font.setFamilies(["Segoe UI Variable Text", "Segoe UI",
+                      "Microsoft YaHei UI", "Microsoft YaHei"])
+    font.setPointSize(9)
+    app.setFont(font)
     widget = QuotaWidget()
 
     def refresh_now() -> None:
