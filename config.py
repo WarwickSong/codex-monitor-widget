@@ -7,6 +7,7 @@ from pathlib import Path
 DATA_DIR = Path.home() / ".codex-quota-widget"
 HISTORY_FILE = DATA_DIR / "history.jsonl"
 SETTINGS_FILE = DATA_DIR / "settings.json"
+RUN_LOG = DATA_DIR / "run.log"
 
 CODEX_DIR = Path.home() / ".codex"
 AUTH_JSON = CODEX_DIR / "auth.json"
