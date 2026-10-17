@@ -1,6 +1,7 @@
 """入口：启动悬浮窗与后台轮询线程。"""
 from __future__ import annotations
 
+import os
 import sys
 import threading
 import traceback
@@ -20,6 +21,8 @@ def _fetch_once(widget: QuotaWidget) -> None:
         snap = UsageSnapshot(error=str(exc))
     except Exception as exc:  # 线程兜底，绝不向上抛
         snap = UsageSnapshot(error=str(exc))
+    if os.environ.get("CQ_DEBUG"):
+        print(f"[CQ] {snap}", flush=True)
     widget.submit(snap)
 
 
