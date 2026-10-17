@@ -10,18 +10,21 @@ from usage import UsageSnapshot
 
 
 def append_sample(snapshot: UsageSnapshot) -> None:
-    """把一次成功拉取的周窗口快照写进 history.jsonl。"""
+    """把一次成功拉取的周窗口快照写进 history.jsonl（失败安全，不抛）。"""
     if snapshot.weekly is None:
         return
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    row = {
-        "ts": snapshot.fetched_at,
-        "used": snapshot.weekly.used_pct,
-        "resets_at": snapshot.weekly.resets_at,
-        "win_min": snapshot.weekly.window_minutes,
-    }
-    with HISTORY_FILE.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        row = {
+            "ts": snapshot.fetched_at,
+            "used": snapshot.weekly.used_pct,
+            "resets_at": snapshot.weekly.resets_at,
+            "win_min": snapshot.weekly.window_minutes,
+        }
+        with HISTORY_FILE.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+    except OSError:
+        pass  # 写入失败只降级预估精度，不影响 UI
 
 
 def load_samples(days: float = 14.0) -> List[Tuple[datetime, float]]:
@@ -43,8 +46,11 @@ def load_samples(days: float = 14.0) -> List[Tuple[datetime, float]]:
 
 
 def save_settings(data: dict) -> None:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    SETTINGS_FILE.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        SETTINGS_FILE.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    except OSError:
+        pass  # 记不住位置就用默认位置
 
 
 def load_settings() -> dict:
