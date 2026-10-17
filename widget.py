@@ -19,7 +19,7 @@ from history import append_sample, load_samples, load_settings, save_settings
 from usage import UsageSnapshot
 
 SHELL_QSS = """
-#shell { background: rgba(20,20,26,0.86); border-radius: 10px;
+#shell { background: rgba(20,20,26,0.92); border-radius: 10px;
          border: 1px solid rgba(255,255,255,0.10); }
 #bar { color: #e8e8ec; font-size: 12px; }
 #pct { font-size: 24px; font-weight: 700; }
@@ -259,8 +259,13 @@ class QuotaWidget(QWidget):
             self._set_bar("加载中…", "#8a8a94")
             return
         if snap.weekly is None:
-            self._set_bar("● 未登录", COLOR_RED)
-            self.footer.setText("未登录：请先用 Codex CLI 登录")
+            err = snap.error or ""
+            if ("未找到" in err) or ("令牌" in err) or ("登录" in err):
+                self._set_bar("● 未登录", COLOR_RED)
+                self.footer.setText(f"未登录：{err}")
+            else:
+                self._set_bar("● 离线", "#8a8a94")
+                self.footer.setText(f"拉取失败：{err}" if err else "拉取失败")
             return
 
         w = snap.weekly
