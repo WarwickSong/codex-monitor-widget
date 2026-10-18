@@ -205,6 +205,8 @@ class QuotaWidget(QWidget):
 
         self.extra = QLabel("", objectName="muted")
         self.footer = QLabel("", objectName="muted")
+        self.extra.setWordWrap(True)
+        self.footer.setWordWrap(True)
         pl.addWidget(self.extra)
         pl.addWidget(self.footer)
 
@@ -350,7 +352,7 @@ class QuotaWidget(QWidget):
                 self.footer.setText(f"未登录：{err}")
             else:
                 self._set_collapsed(TEXT_MUTED, "离线", "", 0)
-                self.footer.setText(f"拉取失败：{err}" if err else "拉取失败")
+                self.footer.setText(f"拉取失败：{err[:60]}" if err else "拉取失败")
             return
 
         w = snap.weekly
@@ -386,7 +388,8 @@ class QuotaWidget(QWidget):
         self.extra.setText(extra)
         self.extra.setVisible(bool(extra))
         ts = datetime.fromtimestamp(snap.fetched_at).strftime("%H:%M")
-        self.footer.setText(f"更新 {ts}" + (f" · {snap.error}" if snap.error else ""))
+        err_txt = (snap.error[:60] + "…") if snap.error and len(snap.error) > 60 else (snap.error or "")
+        self.footer.setText(f"更新 {ts}" + (f" · {err_txt}" if err_txt else ""))
         if not self._expanded:
             self.setGeometry(self.x(), self.y(), self._bar_width(), COLLAPSED_H)
 
