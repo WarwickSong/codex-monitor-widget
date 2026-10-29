@@ -14,7 +14,7 @@ AUTH_JSON = CODEX_DIR / "auth.json"
 USAGE_API = "https://chatgpt.com/backend-api/wham/usage"
 USAGE_PAGE = "https://chatgpt.com/codex/settings/usage"
 
-POLL_INTERVAL_SEC = 2 * 60  # 额度轮询间隔（状态查询接口，不消耗额度；太密会被网关限流）
+POLL_INTERVAL_SEC = 60  # 额度轮询间隔（状态查询接口，不消耗额度；太密会被网关限流）
 
 # —— UI ——
 COLLAPSED_H = 32              # 折叠胶囊高度 px
