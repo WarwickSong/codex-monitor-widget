@@ -17,6 +17,7 @@ from config import (
 )
 from forecast import Forecast, forecast
 from history import append_sample, load_samples, load_settings, save_settings
+from tokens import fmt_tok
 from usage import UsageSnapshot
 
 TEXT_MAIN = "#f2f2f5"
@@ -110,7 +111,8 @@ def _fmt_countdown(resets_ts) -> str:
 
 
 class QuotaWidget(QWidget):
-    updated = Signal(object)  # submit → emit → 队列投递到 UI 线程
+    updated = Signal(object)        # submit → emit → 队列投递到 UI 线程
+    tokens_updated = Signal(object)  # token 统计同理
 
     def __init__(self) -> None:
         super().__init__()
@@ -118,6 +120,7 @@ class QuotaWidget(QWidget):
         self.setAttribute(Qt.WA_TranslucentBackground)
         self._snapshot: Optional[UsageSnapshot] = None
         self._forecast: Optional[Forecast] = None
+        self._tokens: Optional[dict] = None
         self._expanded = False
         self._press_pos = None
         self._dragging = False
@@ -132,6 +135,7 @@ class QuotaWidget(QWidget):
         self._collapse_timer.setInterval(250)
         self._collapse_timer.timeout.connect(self._try_collapse)
         self.updated.connect(self._on_snapshot)
+        self.tokens_updated.connect(self._on_tokens)
         self._restore_pos()
         self._apply_state()
 
@@ -202,6 +206,14 @@ class QuotaWidget(QWidget):
         cards.addWidget(self.wd_card)
         cards.addWidget(self.ed_card)
         pl.addLayout(cards)
+
+        # Token 视角（仅展开时可见，折叠条不变）
+        self.tok_used = QLabel("", objectName="muted")
+        self.tok_fit = QLabel("", objectName="muted")
+        self.tok_used.setWordWrap(True)
+        self.tok_fit.setWordWrap(True)
+        pl.addWidget(self.tok_used)
+        pl.addWidget(self.tok_fit)
 
         self.extra = QLabel("", objectName="muted")
         self.footer = QLabel("", objectName="muted")
@@ -333,6 +345,33 @@ class QuotaWidget(QWidget):
             )
         self._apply_state()
 
+    def submit_tokens(self, stats: dict) -> None:
+        self.tokens_updated.emit(stats)  # 任意线程可调用
+
+    def _on_tokens(self, stats: dict) -> None:
+        self._tokens = stats
+        self._apply_state()
+
+    def _render_tokens(self, remain: float) -> None:
+        t = self._tokens
+        if t is None:
+            self.tok_used.setText("token 统计扫描中…")
+            self.tok_fit.setText("")
+            return
+        hit = t.get("hit_rate")
+        hit_txt = f" · 命中 {hit * 100:.0f}%" if hit is not None else ""
+        self.tok_used.setText(
+            f"本周期 token：入 {fmt_tok(t['in_t'])} · 缓存 {fmt_tok(t['cached'])}"
+            f" · 出 {fmt_tok(t['out'])}{hit_txt}"
+        )
+        per_pct = t.get("per_pct")
+        if per_pct:
+            self.tok_fit.setText(
+                f"实测 1% ≈ {fmt_tok(per_pct)} token · 剩余 ≈ {fmt_tok(per_pct * remain)}"
+            )
+        else:
+            self.tok_fit.setText("token↔% 汇率积累中（多用几轮更准）")
+
     def _set_collapsed(self, color: str, main: str, days: str, progress: int) -> None:
         self.dot.set_color(color)
         self.bar_pct.setText(main)
@@ -383,6 +422,7 @@ class QuotaWidget(QWidget):
             self._fill_card(self.wd_card, f.working_day, f.remaining_wd_h, "个工作日",
                             "" if f.fallback_wd else "按历史速率")
             self._fill_card(self.ed_card, f.every_day, f.remaining_all_h, "天", "")
+        self._render_tokens(remain)
         extra = (f"5h 窗口剩余 {100 - snap.five_hour.used_pct:.0f}%"
                  if snap.five_hour else "")
         self.extra.setText(extra)
