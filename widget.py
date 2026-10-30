@@ -199,21 +199,24 @@ class QuotaWidget(QWidget):
         self.progress.setRange(0, 100)
         pl.addWidget(self.progress)
 
-        cards = QHBoxLayout()
-        cards.setSpacing(8)
+        # 2×2 卡片网格：上排预估、下排 token 视角（仅展开时可见，折叠条不变）
+        row1 = QHBoxLayout()
+        row1.setSpacing(8)
         self.wd_card = self._make_card("工作日节奏")
         self.ed_card = self._make_card("每天都在用")
-        cards.addWidget(self.wd_card)
-        cards.addWidget(self.ed_card)
-        pl.addLayout(cards)
-
-        # Token 视角（仅展开时可见，折叠条不变）
-        self.tok_used = QLabel("", objectName="muted")
-        self.tok_fit = QLabel("", objectName="muted")
-        self.tok_used.setWordWrap(True)
-        self.tok_fit.setWordWrap(True)
-        pl.addWidget(self.tok_used)
-        pl.addWidget(self.tok_fit)
+        row1.addWidget(self.wd_card)
+        row1.addWidget(self.ed_card)
+        row2 = QHBoxLayout()
+        row2.setSpacing(8)
+        self.tok_card = self._make_card("本周期 Token")
+        self.eq_card = self._make_card("套餐换算 · 实测")
+        row2.addWidget(self.tok_card)
+        row2.addWidget(self.eq_card)
+        grid = QVBoxLayout()
+        grid.setSpacing(8)
+        grid.addLayout(row1)
+        grid.addLayout(row2)
+        pl.addLayout(grid)
 
         self.extra = QLabel("", objectName="muted")
         self.footer = QLabel("", objectName="muted")
@@ -355,22 +358,31 @@ class QuotaWidget(QWidget):
     def _render_tokens(self, remain: float) -> None:
         t = self._tokens
         if t is None:
-            self.tok_used.setText("token 统计扫描中…")
-            self.tok_fit.setText("")
+            self.tok_card.main_label.setText("扫描中…")
+            self.tok_card.main_label.setStyleSheet(f"color: {TEXT_MAIN};")
+            self.tok_card.sub_label.setText("")
             return
         hit = t.get("hit_rate")
-        hit_txt = f" · 命中 {hit * 100:.0f}%" if hit is not None else ""
-        self.tok_used.setText(
-            f"本周期 token：入 {fmt_tok(t['in_t'])} · 缓存 {fmt_tok(t['cached'])}"
-            f" · 出 {fmt_tok(t['out'])}{hit_txt}"
+        if hit is None:
+            self.tok_card.main_label.setText("--")
+            self.tok_card.main_label.setStyleSheet(f"color: {TEXT_MAIN};")
+        else:
+            c = COLOR_GREEN if hit >= 0.6 else (COLOR_AMBER if hit >= 0.3 else COLOR_RED)
+            self.tok_card.main_label.setText(f"缓存命中 {hit * 100:.0f}%")
+            self.tok_card.main_label.setStyleSheet(f"color: {c};")
+        self.tok_card.sub_label.setText(
+            f"入 {fmt_tok(t['in_t'])} · 缓存 {fmt_tok(t['cached'])} · 出 {fmt_tok(t['out'])}"
         )
         per_pct = t.get("per_pct")
+        self.eq_card.main_label.setStyleSheet(f"color: {TEXT_MAIN};")
         if per_pct:
-            self.tok_fit.setText(
-                f"实测 1% ≈ {fmt_tok(per_pct)} token · 剩余 ≈ {fmt_tok(per_pct * remain)}"
+            self.eq_card.main_label.setText(f"1% ≈ {fmt_tok(per_pct)}")
+            self.eq_card.sub_label.setText(
+                f"剩余 ≈ {fmt_tok(per_pct * remain)} · 周期 ≈ {fmt_tok(per_pct * 100)}"
             )
         else:
-            self.tok_fit.setText("token↔% 汇率积累中（多用几轮更准）")
+            self.eq_card.main_label.setText("积累中")
+            self.eq_card.sub_label.setText("多用几轮自动校准")
 
     def _set_collapsed(self, color: str, main: str, days: str, progress: int) -> None:
         self.dot.set_color(color)
